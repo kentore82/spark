@@ -1,5 +1,4 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
+/* Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
  * The ASF licenses this file to You under the Apache License, Version 2.0
@@ -72,12 +71,16 @@ private[hive] class SparkSQLSessionManager(hiveServer: HiveServer2, sqlContext: 
     val session = super.getSession(sessionHandle)
     HiveThriftServer2.listener.onSessionCreated(
       session.getIpAddress, sessionHandle.getSessionId.toString, session.getUsername)
-    val sessionState = sqlContext.sessionState.asInstanceOf[HiveSessionState]
-    val ctx = if (sessionState.hiveThriftServerSingleSession) {
-      sqlContext
-    } else {
-      sqlContext.newSession()
-    }
+    // val sessionState = sqlContext.sessionState.asInstanceOf[HiveSessionState]
+    val sessionState = sqlContext.sessionState
+
+    val ctx = sqlContext 
+// sessionState match { 
+//       case hss: HiveSessionState if hss.hiveThriftServerSingleSession => sqlContext
+//       case _ => 
+//          println("Starting a new session.")
+//          sqlContext.newSession()
+//    }
     ctx.setConf("spark.sql.hive.version", HiveUtils.hiveExecutionVersion)
     sparkSqlOperationManager.sessionToContexts += sessionHandle -> ctx
     sessionHandle

@@ -1,5 +1,4 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
+/* Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
  * The ASF licenses this file to You under the Apache License, Version 2.0
@@ -48,8 +47,8 @@ private[thriftserver] class SparkSQLOperationManager()
       confOverlay: JMap[String, String],
       async: Boolean): ExecuteStatementOperation = synchronized {
     val sqlContext = sessionToContexts(parentSession.getSessionHandle)
-    val sessionState = sqlContext.sessionState.asInstanceOf[HiveSessionState]
-    val runInBackground = async && sessionState.hiveThriftServerAsync
+    //val sessionState = sqlContext.sessionState.asInstanceOf[HiveSessionState]
+    val runInBackground = false // async && sessionState.hiveThriftServerAsync
     val operation = new SparkExecuteStatementOperation(parentSession, statement, confOverlay,
       runInBackground)(sqlContext, sessionToActivePool)
     handleToOperation.put(operation.getHandle, operation)
