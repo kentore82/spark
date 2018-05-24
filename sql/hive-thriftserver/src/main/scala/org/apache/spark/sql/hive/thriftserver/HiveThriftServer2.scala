@@ -40,6 +40,9 @@ import org.apache.spark.sql.hive.thriftserver.ui.ThriftServerTab
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.util.{ShutdownHookManager, Utils}
 
+// Temp tables import
+import  org.apache.hadoop.fs.{FileSystem,Path}
+
 /**
  * The main entry point for the Spark SQL port of HiveServer2.  Starts up a `SparkSQLContext` and a
  * `HiveThriftServer2` thrift server.
@@ -70,6 +73,19 @@ object HiveThriftServer2 extends Logging {
     } else {
       None
     }
+  }
+
+  def getTempTableList(sqlContext: SQLContext): Array[(String,String)] = {
+    val tempTableRootPath = sqlContext.getConf("spark.sql.hive.thriftServer.temptable.root")
+
+    val files = FileSystem.get( sqlContext.sparkSession.sparkContext.hadoopConfiguration )
+                          .listStatus(new Path(tempTableRootPath))
+
+    val tempTableMeta = files.filter(_.isDirectory)
+                        .map(x => (x.getPath.toString, x.getPath.toString
+                          .split("_Parquet").head.split("/").last))
+
+    return tempTableMeta
   }
 
   def main(args: Array[String]) {
