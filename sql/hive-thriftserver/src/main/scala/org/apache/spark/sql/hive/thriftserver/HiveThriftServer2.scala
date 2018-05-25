@@ -24,6 +24,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.commons.logging.LogFactory
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.hive.conf.HiveConf
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars
 import org.apache.hive.service.cli.thrift.{ThriftBinaryCLIService, ThriftHttpCLIService}
@@ -40,8 +41,6 @@ import org.apache.spark.sql.hive.thriftserver.ui.ThriftServerTab
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.util.{ShutdownHookManager, Utils}
 
-// Temp tables import
-import  org.apache.hadoop.fs.{FileSystem,Path}
 
 /**
  * The main entry point for the Spark SQL port of HiveServer2.  Starts up a `SparkSQLContext` and a
@@ -75,17 +74,40 @@ object HiveThriftServer2 extends Logging {
     }
   }
 
-  def getTempTableList(sqlContext: SQLContext): Array[(String,String)] = {
+  def getTempTableList(sqlContext: SQLContext): Array[(String, String)] = {
     val tempTableRootPath = sqlContext.getConf("spark.sql.hive.thriftServer.temptable.root")
 
     val files = FileSystem.get( sqlContext.sparkSession.sparkContext.hadoopConfiguration )
-                          .listStatus(new Path(tempTableRootPath))
+      .listStatus(new Path(tempTableRootPath))
 
     val tempTableMeta = files.filter(_.isDirectory)
-                        .map(x => (x.getPath.toString, x.getPath.toString
-                          .split("_Parquet").head.split("/").last))
+      .map(x => (x.getPath.toString, x.getPath.toString
+        .split("_Parquet").head.split("/").last))
 
-    return tempTableMeta
+    tempTableMeta
+  }
+
+  def loadTempTables(sqlContext: SQLContext, tempTableMeta: (String, String)): String = {
+    // TODO: add check to differentiate between regular type and GeoMesa type Parquet files
+    try {
+      val DF = sqlContext.sparkSession.read.format("geomesa")
+        .option("fs.encoding", "parquet")
+        .option("fs.path", tempTableMeta._1)
+        .option("geomesa.feature", tempTableMeta._2).load()
+
+      DF.createOrReplaceTempView(tempTableMeta._2)
+      val loaded = "Loaded " + tempTableMeta._2
+      logInfo(loaded)
+      loaded
+    }
+
+    catch {
+      case e: Exception =>
+        val loaded = "Error loading table " + tempTableMeta._2
+        logError(loaded, e)
+        loaded
+    }
+
   }
 
   def main(args: Array[String]) {
@@ -117,6 +139,42 @@ object HiveThriftServer2 extends Logging {
       } else {
         None
       }
+
+      // Load temp-tables if enabled
+      val tempTableEnabled = try {
+        SparkSQLEnv.sqlContext.getConf("spark.sql.hive.thriftServer.temptable.enabled")
+      } catch {
+        case e: java.util.NoSuchElementException => logInfo("Custom config spark.sql.hive." +
+          "thriftServer.temptable.enabled not defined, setting 'false'")
+          "false"
+      }
+
+      val singleSessionEnabled = SparkSQLEnv.sqlContext.getConf("spark.sql.hive.thriftServer" +
+        ".singleSession")
+
+      if (tempTableEnabled == "true" && singleSessionEnabled == "true") {
+        try {
+          val tempTableMeta = getTempTableList(SparkSQLEnv.sqlContext)
+          tempTableMeta.map(x => loadTempTables(SparkSQLEnv.sqlContext, x))
+
+        } catch {
+          case e: Exception =>
+            logError("Error loading tempTables", e)
+            System.exit(-1)
+        }
+
+
+
+      } else if (tempTableEnabled == "true" && singleSessionEnabled == "false") {
+        logError("Spark config spark.sql.hive.thriftServer.singleSession is false," +
+          " tempTables will not be exposed.")
+        System.exit(-1)
+
+      } else {
+        logInfo("tempTables not enabled.")
+      }
+
+
       // If application was killed before HiveThriftServer2 start successfully then SparkSubmit
       // process can not exit, so check whether if SparkContext was stopped.
       if (SparkSQLEnv.sparkContext.stopped.get()) {
@@ -129,6 +187,7 @@ object HiveThriftServer2 extends Logging {
         System.exit(-1)
     }
   }
+
 
   private[thriftserver] class SessionInfo(
       val sessionId: String,
