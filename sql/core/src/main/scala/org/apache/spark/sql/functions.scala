@@ -2732,6 +2732,21 @@ object functions {
   }
 
   /**
+   * Returns timestamp truncated to the unit specified by the format.
+   *
+   * @param format: 'year', 'yyyy', 'yy' for truncate by year,
+   *                'month', 'mon', 'mm' for truncate by month,
+   *                'day', 'dd' for truncate by day,
+   *                Other options are: 'second', 'minute', 'hour', 'week', 'month', 'quarter'
+   *
+   * @group datetime_funcs
+   * @since 2.2.0
+   */
+  def date_trunc(format: String, timestamp: Column): Column = withExpr {
+    TruncTimestamp(Literal(format), timestamp.expr)
+  }
+
+  /**
    * Given a timestamp, which corresponds to a certain time of day in UTC, returns another timestamp
    * that corresponds to the same time of day in the given timezone.
    * @group datetime_funcs
